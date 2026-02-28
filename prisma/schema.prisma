@@ -1,14 +1,196 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum PromoStatus {
+  UNUSED
+  USED
+  INVALID
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events Event[]
+}
+
+model Venue {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  city      String
+  country   String   @default("Serbia")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  regions SeatingRegion[]
+  shows   Show[]
+}
+
+model SeatingRegion {
+  id       String @id @default(cuid())
+  name     String
+  capacity Int
+
+  sortOrder Int @default(0)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  prices ShowPrice[]
+  items  ReservationItem[]
+
+  @@unique([venueId, name])
+  @@index([venueId])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  artist      String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  shows Show[]
+
+  @@index([categoryId])
+}
+
+model Show {
+  id       String   @id @default(cuid())
+  startsAt DateTime
+
+  eventId String
+  venueId String
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  prices       ShowPrice[]
+  reservations Reservation[]
+
+  @@index([startsAt])
+  @@index([eventId])
+  @@index([venueId])
+}
+
+model ShowPrice {
+  id       String @id @default(cuid())
+  priceRsd Int // cena u RSD (osnovna)
+
+  showId   String
+  regionId String
+
+  show   Show          @relation(fields: [showId], references: [id], onDelete: Cascade)
+  region SeatingRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  @@unique([showId, regionId])
+  @@index([showId])
+  @@index([regionId])
+}
+
+model Currency {
+  code      String  @id // "RSD", "EUR", "USD"
+  name      String
+  isEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isEnabled])
+}
+
+model AppSettings {
+  id String @id @default("singleton")
+
+  baseCurrencyCode String    @default("RSD")
+  discountUntil    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Reservation {
+  id     String @id @default(cuid())
+  showId String
+  show   Show   @relation(fields: [showId], references: [id])
+
+  fullName   String
+  email      String
+  phone      String?
+  accessCode String            @unique
+  status     ReservationStatus @default(ACTIVE)
+
+  promoCodeUsed String?
+
+  currencyCode    String @default("RSD")
+  fxRateUsed      Float?
+  totalRsd        Int
+  totalInCurrency Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ReservationItem[]
+
+  issuedPromo PromoCode? @relation("IssuedPromo")
+  usedPromo   PromoCode? @relation("UsedPromo")
+
+  @@index([email])
+  @@index([showId])
+  @@index([status])
+}
+
+model ReservationItem {
+  id String @id @default(cuid())
+
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  regionId String
+  region   SeatingRegion @relation(fields: [regionId], references: [id])
+
+  qty          Int
+  unitPriceRsd Int
+  lineTotalRsd Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([reservationId, regionId])
+  @@index([reservationId])
+  @@index([regionId])
+}
+
+model PromoCode {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  status      PromoStatus @default(UNUSED)
+  discountPct Int         @default(5)
+
+  issuedByReservationId String      @unique
+  issuedByReservation   Reservation @relation("IssuedPromo", fields: [issuedByReservationId], references: [id], onDelete: Cascade)
+
+  usedByReservationId String?      @unique
+  usedByReservation   Reservation? @relation("UsedPromo", fields: [usedByReservationId], references: [id])
+
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([status])
 }
