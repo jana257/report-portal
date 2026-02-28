@@ -59,3 +59,26 @@ body {
   border-radius: 12px;
   color: #fecaca;
 }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+.grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+
+.stat {
+  background: rgba(17,24,39,.8);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+}
+.statLabel { color: var(--muted); font-size: 12px; }
+.statValue { font-size: 28px; font-weight: 800; margin-top: 6px; }
+
+.pad { padding: 14px; }
+.h2 { margin: 0 0 10px; font-size: 14px; color: var(--muted); font-weight: 700; letter-spacing: .2px; }
+.small { font-size: 12px; }
+
+.chart { height: 260px; }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+  .grid2 { grid-template-columns: 1fr; }
+}
