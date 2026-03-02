@@ -194,3 +194,24 @@ model PromoCode {
 
   @@index([status])
 }
+
+model TicketsByShow {
+  showId      String   @id
+  ticketsSold Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model TicketsByLocation {
+  venueId     String   @id
+  venueName   String
+  city        String
+  ticketsSold Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model ProcessedEvent {
+  eventId     String   @id
+  type        String
+  occurredAt  DateTime
+  processedAt DateTime @default(now())
+}
