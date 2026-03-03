@@ -2,17 +2,21 @@
 
 import Link from "next/link";
 import { usePolling } from "@/app/components/usePolling";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-type ShowRow = { eventId: string; eventTitle: string; artist: string; ticketsSold: number };
-type LocRow = { venueId: string; venueName: string; city: string; ticketsSold: number };
+type ShowRow = {
+  eventId: string;
+  eventTitle: string | null;
+  eventArtist: string | null;
+  ticketsSold: number;
+};
+
+type LocRow = {
+  venueId: string;
+  venueName: string | null;
+  venueCity: string | null;
+  ticketsSold: number;
+};
 
 export default function ReportsDashboard() {
   const shows = usePolling<ShowRow[]>("/api/reporting/tickets-by-show", 3000);
@@ -21,16 +25,15 @@ export default function ReportsDashboard() {
   const showRows = shows.data ?? [];
   const locRows = locs.data ?? [];
 
-  const totalTickets =
-    showRows.reduce((sum, r) => sum + (r.ticketsSold ?? 0), 0);
+  const totalTickets = showRows.reduce((sum, r) => sum + (r.ticketsSold ?? 0), 0);
 
-  const topShows = showRows.slice(0, 5).map(r => ({
-    name: `${r.artist} - ${r.eventTitle}`,
+  const topShows = showRows.slice(0, 5).map((r) => ({
+    name: `${r.eventArtist ?? ""} - ${r.eventTitle ?? ""}`,
     value: r.ticketsSold,
   }));
 
-  const topLocs = locRows.slice(0, 5).map(r => ({
-    name: `${r.venueName} (${r.city})`,
+  const topLocs = locRows.slice(0, 5).map((r) => ({
+    name: `${r.venueName ?? ""} (${r.venueCity ?? ""})`,
     value: r.ticketsSold,
   }));
 
@@ -39,11 +42,14 @@ export default function ReportsDashboard() {
       <header className="header">
         <div>
           <h1>Dashboard izveštaja</h1>
-          <p className="muted">Osvežava se automatski na 3s.</p>
         </div>
         <nav className="nav">
-          <Link className="btn" href="/reports/by-show">Izveštaj po koncertu</Link>
-          <Link className="btn" href="/reports/by-location">Izveštaj po lokaciji</Link>
+          <Link className="btn" href="/reports/by-show">
+            Izveštaj po koncertu
+          </Link>
+          <Link className="btn" href="/reports/by-location">
+            Izveštaj po lokaciji
+          </Link>
         </nav>
       </header>
 

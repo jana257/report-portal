@@ -6,212 +6,104 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ReservationStatus {
-  ACTIVE
-  CANCELLED
+
+enum TicketEventType {
+  ticket_created
+  ticket_updated
+  ticket_cancelled
+  ticket_purchase_rejected
 }
 
-enum PromoStatus {
-  UNUSED
-  USED
-  INVALID
-}
 
-model Category {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  events Event[]
-}
-
-model Venue {
-  id        String   @id @default(cuid())
-  name      String
-  address   String
-  city      String
-  country   String   @default("Serbia")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  regions SeatingRegion[]
-  shows   Show[]
-}
-
-model SeatingRegion {
-  id       String @id @default(cuid())
-  name     String
-  capacity Int
-
-  sortOrder Int @default(0)
-
-  venueId String
-  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
-
-  prices ShowPrice[]
-  items  ReservationItem[]
-
-  @@unique([venueId, name])
-  @@index([venueId])
-}
-
-model Event {
-  id          String   @id @default(cuid())
-  title       String
-  artist      String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
-
-  shows Show[]
-
-  @@index([categoryId])
-}
-
-model Show {
-  id       String   @id @default(cuid())
-  startsAt DateTime
-
-  eventId String
-  venueId String
-
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  venue Venue @relation(fields: [venueId], references: [id])
-
-  prices       ShowPrice[]
-  reservations Reservation[]
-
-  @@index([startsAt])
-  @@index([eventId])
-  @@index([venueId])
-}
-
-model ShowPrice {
-  id       String @id @default(cuid())
-  priceRsd Int // cena u RSD (osnovna)
-
-  showId   String
-  regionId String
-
-  show   Show          @relation(fields: [showId], references: [id], onDelete: Cascade)
-  region SeatingRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
-
-  @@unique([showId, regionId])
-  @@index([showId])
-  @@index([regionId])
-}
-
-model Currency {
-  code      String  @id // "RSD", "EUR", "USD"
-  name      String
-  isEnabled Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([isEnabled])
-}
-
-model AppSettings {
-  id String @id @default("singleton")
-
-  baseCurrencyCode String    @default("RSD")
-  discountUntil    DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Reservation {
-  id     String @id @default(cuid())
-  showId String
-  show   Show   @relation(fields: [showId], references: [id])
-
-  fullName   String
-  email      String
-  phone      String?
-  accessCode String            @unique
-  status     ReservationStatus @default(ACTIVE)
-
-  promoCodeUsed String?
-
-  currencyCode    String @default("RSD")
-  fxRateUsed      Float?
-  totalRsd        Int
-  totalInCurrency Int?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  items ReservationItem[]
-
-  issuedPromo PromoCode? @relation("IssuedPromo")
-  usedPromo   PromoCode? @relation("UsedPromo")
-
-  @@index([email])
-  @@index([showId])
-  @@index([status])
-}
-
-model ReservationItem {
+model TicketEvent {
   id String @id @default(cuid())
 
-  reservationId String
-  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  eventId String @unique
 
-  regionId String
-  region   SeatingRegion @relation(fields: [regionId], references: [id])
+  streamId String @unique
 
-  qty          Int
-  unitPriceRsd Int
-  lineTotalRsd Int
+  type TicketEventType
+  occurredAt DateTime
 
-  createdAt DateTime @default(now())
+  payload Json
 
-  @@unique([reservationId, regionId])
-  @@index([reservationId])
-  @@index([regionId])
+  receivedAt DateTime @default(now())
+
+  @@index([type])
+  @@index([occurredAt])
 }
 
-model PromoCode {
-  id          String      @id @default(cuid())
-  code        String      @unique
-  status      PromoStatus @default(UNUSED)
-  discountPct Int         @default(5)
 
-  issuedByReservationId String      @unique
-  issuedByReservation   Reservation @relation("IssuedPromo", fields: [issuedByReservationId], references: [id], onDelete: Cascade)
+model ShowSnapshot {
+  id String @id 
 
-  usedByReservationId String?      @unique
-  usedByReservation   Reservation? @relation("UsedPromo", fields: [usedByReservationId], references: [id])
+  startsAt DateTime?
 
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  eventId String?
+  eventTitle String?
+  eventArtist String?
 
-  @@index([status])
+  venueId String?
+  venueName String?
+  venueCity String?
+  venueCountry String?
+
+  updatedAt DateTime @updatedAt
+
+  agg ShowAgg?
+
+  @@index([eventId])
+  @@index([venueId])
+  @@index([startsAt])
 }
 
-model TicketsByShow {
-  showId      String   @id
-  ticketsSold Int      @default(0)
-  updatedAt   DateTime @updatedAt
+
+model ShowAgg {
+  showId String @id
+  show   ShowSnapshot @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  ticketsSold Int @default(0)
+
+  ticketsCancelled Int @default(0)
+
+  purchasesRejected Int @default(0)
+
+  updatedAt DateTime @updatedAt
 }
 
-model TicketsByLocation {
-  venueId     String   @id
-  venueName   String
-  city        String
-  ticketsSold Int      @default(0)
-  updatedAt   DateTime @updatedAt
+
+model EventAgg {
+  eventId String @id 
+
+  eventTitle  String?
+  eventArtist String?
+
+  ticketsSold Int @default(0)
+  ticketsCancelled Int @default(0)
+  purchasesRejected Int @default(0)
+
+  updatedAt DateTime @updatedAt
 }
 
-model ProcessedEvent {
-  eventId     String   @id
-  type        String
-  occurredAt  DateTime
-  processedAt DateTime @default(now())
+model VenueAgg {
+  venueId String @id 
+
+  venueName String?
+  venueCity String?
+
+  ticketsSold Int @default(0)
+  ticketsCancelled Int @default(0)
+  purchasesRejected Int @default(0)
+
+  updatedAt DateTime @updatedAt
+}
+
+
+model StreamCheckpoint {
+  id String @id @default("ticket_events")
+
+  streamName String @unique
+  lastStreamId String
+
+  updatedAt DateTime @updatedAt
 }

@@ -3,31 +3,33 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const rows = await prisma.$queryRaw<
-      Array<{
-        eventId: string;
-        eventTitle: string;
-        artist: string;
-        ticketsSold: number;
-      }>
-    >`
-      SELECT
-        e.id AS "eventId",
-        e.title AS "eventTitle",
-        e.artist AS "artist",
-        COALESCE(SUM(ri.qty), 0)::int AS "ticketsSold"
-      FROM "Event" e
-      JOIN "Show" s ON s."eventId" = e.id
-      JOIN "Reservation" r ON r."showId" = s.id
-      JOIN "ReservationItem" ri ON ri."reservationId" = r.id
-      WHERE r.status = 'ACTIVE'
-      GROUP BY e.id, e.title, e.artist
-      ORDER BY "ticketsSold" DESC;
-    `;
+    const rows = await prisma.eventAgg.findMany({
+      select: {
+        eventId: true,
+        eventTitle: true,
+        eventArtist: true,
+        ticketsSold: true,
+        ticketsCancelled: true,
+        purchasesRejected: true,
+      },
+      orderBy: { ticketsSold: "desc" },
+    });
 
-    return NextResponse.json({ ok: true, rows });
+    const mapped = rows.map((r) => ({
+      eventId: r.eventId,
+      eventTitle: r.eventTitle ?? "",
+      artist: r.eventArtist ?? "",
+      ticketsSold: r.ticketsSold,
+      ticketsCancelled: r.ticketsCancelled,
+      purchasesRejected: r.purchasesRejected,
+    }));
+
+    return NextResponse.json({ ok: true, rows: mapped });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ ok: false, error: "Greška pri učitavanju izveštaja" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Greška pri učitavanju izveštaja" },
+      { status: 500 }
+    );
   }
 }
