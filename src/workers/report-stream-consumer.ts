@@ -11,7 +11,9 @@ type RawStreamFields = Record<string, string>;
 
 function fieldsToObj(fields: string[]): RawStreamFields {
   const obj: Record<string, string> = {};
-  for (let i = 0; i < fields.length; i += 2) obj[fields[i]] = fields[i + 1];
+  for (let i = 0; i < fields.length; i += 2) {
+    obj[fields[i]] = fields[i + 1];
+  }
   return obj;
 }
 
@@ -48,6 +50,17 @@ function safeJsonParse(v: string | undefined) {
   }
 }
 
+function toSafeDate(v: unknown): Date | undefined {
+  if (!v) return undefined;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function toNumber(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function extractCore(
   type: string,
   payload: any
@@ -66,9 +79,20 @@ function extractCore(
     startsAt?: Date;
   };
 } {
-  const showId = payload.showId ?? payload.show?.id ?? payload.reservation?.showId;
-  const eventId = payload.eventId ?? payload.event?.id ?? payload.show?.eventId;
-  const venueId = payload.venueId ?? payload.venue?.id ?? payload.show?.venueId;
+  const showId =
+    payload.showId ??
+    payload.show?.id ??
+    payload.reservation?.showId;
+
+  const eventId =
+    payload.eventId ??
+    payload.event?.id ??
+    payload.show?.eventId;
+
+  const venueId =
+    payload.venueId ??
+    payload.venue?.id ??
+    payload.show?.venueId;
 
   const meta = {
     eventTitle: payload.eventTitle ?? payload.event?.title,
@@ -76,23 +100,25 @@ function extractCore(
     venueName: payload.venueName ?? payload.venue?.name,
     venueCity: payload.venueCity ?? payload.venue?.city,
     venueCountry: payload.venueCountry ?? payload.venue?.country,
-    startsAt: payload.startsAt ? new Date(payload.startsAt) : undefined,
-  };
-
-  const n = (x: any) => {
-    const v = Number(x);
-    return Number.isFinite(v) ? v : 0;
+    startsAt:
+      toSafeDate(payload.startsAt) ??
+      toSafeDate(payload.show?.startsAt),
   };
 
   let deltaQty = 0;
-  if (payload.ticketsDelta != null) deltaQty = n(payload.ticketsDelta);
-  else if (payload.deltaQty != null) deltaQty = n(payload.deltaQty);
-  else if (payload.qty != null) deltaQty = n(payload.qty);
-  else if (payload.totalQty != null) deltaQty = n(payload.totalQty);
 
-  if (type === "ticket.cancelled" && deltaQty > 0) deltaQty = -deltaQty;
+  if (payload.ticketsDelta != null) deltaQty = toNumber(payload.ticketsDelta);
+  else if (payload.deltaQty != null) deltaQty = toNumber(payload.deltaQty);
+  else if (payload.qty != null) deltaQty = toNumber(payload.qty);
+  else if (payload.totalQty != null) deltaQty = toNumber(payload.totalQty);
 
-  if (type === "ticket.purchase_rejected") deltaQty = 0;
+  if (type === "ticket.cancelled" && deltaQty > 0) {
+    deltaQty = -deltaQty;
+  }
+
+  if (type === "ticket.purchase_rejected") {
+    deltaQty = 0;
+  }
 
   return {
     showId,
@@ -122,19 +148,23 @@ async function applyEvent(streamId: string, data: RawStreamFields) {
   }
 
   const occurredAt = new Date(occurredAtStr);
-  const payload = safeJsonParse(payloadStr);
+  if (Number.isNaN(occurredAt.getTime())) {
+    console.warn("Invalid occurredAt:", occurredAtStr, "streamId:", streamId);
+    return;
+  }
 
+  const payload = safeJsonParse(payloadStr);
   const core = extractCore(rawType, payload);
-  const cancelledQty = rawType === "ticket.cancelled" ? Math.abs(core.deltaQty) : 0;
+  const cancelledQty =
+    rawType === "ticket.cancelled" ? Math.abs(core.deltaQty) : 0;
 
   try {
     await prisma.$transaction(async (tx) => {
-    
       await tx.ticketEvent.create({
         data: {
           eventId: rawEventId,
           streamId,
-          type: typeEnum as any,
+          type: typeEnum,
           occurredAt,
           payload,
         },
@@ -178,14 +208,20 @@ async function applyEvent(streamId: string, data: RawStreamFields) {
             create: {
               showId: core.showId,
               ticketsSold: core.deltaQty,
-              ticketsCancelled: rawType === "ticket.cancelled" ? cancelledQty : 0,
+              ticketsCancelled:
+                rawType === "ticket.cancelled" ? cancelledQty : 0,
             },
           });
         } else if (rawType === "ticket.purchase_rejected") {
           await tx.showAgg.upsert({
             where: { showId: core.showId },
-            update: { purchasesRejected: { increment: 1 } },
-            create: { showId: core.showId, purchasesRejected: 1 },
+            update: {
+              purchasesRejected: { increment: 1 },
+            },
+            create: {
+              showId: core.showId,
+              purchasesRejected: 1,
+            },
           });
         }
       }
@@ -204,10 +240,11 @@ async function applyEvent(streamId: string, data: RawStreamFields) {
             },
             create: {
               eventId: core.eventId,
-              ticketsSold: core.deltaQty,
               eventTitle: core.meta.eventTitle ?? null,
               eventArtist: core.meta.eventArtist ?? null,
-              ticketsCancelled: rawType === "ticket.cancelled" ? cancelledQty : 0,
+              ticketsSold: core.deltaQty,
+              ticketsCancelled:
+                rawType === "ticket.cancelled" ? cancelledQty : 0,
             },
           });
         } else if (rawType === "ticket.purchase_rejected") {
@@ -220,9 +257,9 @@ async function applyEvent(streamId: string, data: RawStreamFields) {
             },
             create: {
               eventId: core.eventId,
-              purchasesRejected: 1,
               eventTitle: core.meta.eventTitle ?? null,
               eventArtist: core.meta.eventArtist ?? null,
+              purchasesRejected: 1,
             },
           });
         }
@@ -242,10 +279,11 @@ async function applyEvent(streamId: string, data: RawStreamFields) {
             },
             create: {
               venueId: core.venueId,
-              ticketsSold: core.deltaQty,
               venueName: core.meta.venueName ?? null,
               venueCity: core.meta.venueCity ?? null,
-              ticketsCancelled: rawType === "ticket.cancelled" ? cancelledQty : 0,
+              ticketsSold: core.deltaQty,
+              ticketsCancelled:
+                rawType === "ticket.cancelled" ? cancelledQty : 0,
             },
           });
         } else if (rawType === "ticket.purchase_rejected") {
@@ -258,16 +296,18 @@ async function applyEvent(streamId: string, data: RawStreamFields) {
             },
             create: {
               venueId: core.venueId,
-              purchasesRejected: 1,
               venueName: core.meta.venueName ?? null,
               venueCity: core.meta.venueCity ?? null,
+              purchasesRejected: 1,
             },
           });
         }
       }
     });
   } catch (e: any) {
-    if (e?.code === "P2002") return;
+    if (e?.code === "P2002") {
+      return;
+    }
     throw e;
   }
 }
@@ -297,7 +337,7 @@ async function main() {
           await applyEvent(msgId, fieldsToObj(fields));
           await redis.xack(STREAM, GROUP, msgId);
         } catch (e) {
-          console.error("Greskaa:", msgId, e);
+          console.error("Greška pri obradi poruke:", msgId, e);
         }
       }
     }
